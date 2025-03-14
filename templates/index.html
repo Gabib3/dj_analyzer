@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Playlist Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+        }
+        .message {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            display: none;
+        }
+        .error {
+            color: red;
+            border-color: red;
+        }
+        .success {
+            color: green;
+            border-color: green;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Audio Playlist Generator</h1>
+        <input type="hidden" id="session_id" value="{{ session_id }}">
+
+        <!-- Upload folder -->
+        <div>
+            <label for="folder_upload">Upload Music Folder:</label>
+            <input type="file" id="folder_upload" webkitdirectory directory multiple>
+            <button onclick="uploadFolder()">Upload Folder</button>
+        </div>
+
+        <div id="upload_message" class="message"></div>
+
+        <!-- Analyze tracks -->
+        <div>
+            <button onclick="analyzeTracks()" id="analyze_btn" disabled>Analyze Tracks</button>
+        </div>
+
+        <div id="analyze_message" class="message"></div>
+
+        <!-- Export playlist -->
+        <div>
+            <button onclick="exportPlaylist()" id="export_btn" disabled>Export Playlist</button>
+        </div>
+
+        <div id="export_message" class="message"></div>
+    </div>
+
+    <script>
+        const sessionId = document.getElementById('session_id').value;
+        let tracks = [];
+
+        function showMessage(elementId, message, isError) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.classList.remove('success', 'error');
+            element.classList.add(isError ? 'error' : 'success');
+            element.style.display = 'block';
+        }
+
+        function uploadFolder() {
+            const files = document.getElementById('folder_upload').files;
+            if (files.length === 0) {
+                showMessage('upload_message', 'Please select a folder with audio files.', true);
+                return;
+            }
+
+            const formData = new FormData();
+            for (let file of files) {
+                formData.append('folder', file, file.webkitRelativePath || file.name);
+            }
+
+            fetch(`/upload/${sessionId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showMessage('upload_message', data.error, true);
+                } else {
+                    showMessage('upload_message', data.message, false);
+                    tracks = data.tracks;
+                    document.getElementById('analyze_btn').disabled = false;
+                }
+            })
+            .catch(error => {
+                showMessage('upload_message', `Upload failed: ${error.message}`, true);
+            });
+        }
+
+        function analyzeTracks() {
+            document.getElementById('analyze_btn').disabled = true;
+            fetch(`/analyze/${sessionId}`, {
+                method: 'GET'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showMessage('analyze_message', data.error, true);
+                    document.getElementById('analyze_btn').disabled = false;
+                } else {
+                    let message = 'Analysis Results:\n';
+                    data.results.forEach(result => {
+                        if (result.status === 'success') {
+                            message += `${result.file}: BPM=${result.bpm}, Key=${result.key}, Energy=${result.energy}\n`;
+                        } else {
+                            message += `${result.file}: ${result.message}\n`;
+                        }
+                    });
+                    showMessage('analyze_message', message, false);
+                    document.getElementById('export_btn').disabled = false;
+                }
+            })
+            .catch(error => {
+                showMessage('analyze_message', `Analysis failed: ${error.message}`, true);
+                document.getElementById('analyze_btn').disabled = false;
+            });
+        }
+
+        function exportPlaylist() {
+            document.getElementById('export_btn').disabled = true;
+            fetch(`/export/${sessionId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showMessage('export_message', data.error, true);
+                    document.getElementById('export_btn').disabled = false;
+                } else {
+                    showMessage('export_message', 'Export successful! Downloading ZIP file...', false);
+                    // Trigger the download
+                    window.location.href = `/download/${data.zip_file}`;
+                }
+            })
+            .catch(error => {
+                showMessage('export_message', `Export failed: ${error.message}`, true);
+                document.getElementById('export_btn').disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>
